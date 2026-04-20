@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.matplotlib-cache/
+
+# Data and project-specific folders
+data/
+resources/
+assignment_brief/
+submissions/
+
