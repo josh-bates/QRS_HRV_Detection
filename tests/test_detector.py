@@ -54,14 +54,15 @@ def test_recording_1_training_data_scores_high():
     assert score["f1"] >= 0.99
 
 
-def test_training_dataset_baseline_range():
+def test_training_dataset_revised_detector_scores_high():
     ecg_list, qrs_expert_list = load_training_data()
     detections = [detect_qrs(ecg, fs=FS) for ecg in ecg_list]
 
     aggregate = score_dataset(detections, qrs_expert_list)["aggregate"]
 
-    assert aggregate["f1"] >= 0.85
-    assert aggregate["f1"] <= 0.90
+    assert aggregate["sens"] >= 0.98
+    assert aggregate["ppv"] >= 0.98
+    assert aggregate["f1"] >= 0.98
 
 
 if __name__ == "__main__":
@@ -71,4 +72,3 @@ if __name__ == "__main__":
     # The all-recording baseline test is intentionally left for pytest or the
     # training runner because it takes several minutes on the full dataset.
     print("Phase 03 detector smoke tests passed.")
-
