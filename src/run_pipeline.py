@@ -147,7 +147,7 @@ def process_recordings(
     for idx, ecg in enumerate(ecg_list, start=1):
         start = time.perf_counter()
         qrs = detect_qrs(ecg, fs=FS)
-        hrv = hrv_for_recording(qrs, fs=FS)
+        hrv = hrv_for_recording(qrs, fs=FS, ecg_len_samples=len(ecg))
         duration = time.perf_counter() - start
 
         qrs_detected.append(qrs)
@@ -337,4 +337,3 @@ def _subset_predictions(
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
