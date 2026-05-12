@@ -64,7 +64,7 @@ _OUTPUT_CALIBRATION: dict[str, tuple[float, float]] = {
     "pNN50": (1.0, 0.0),
     "LF": (1.1610889821772639, 0.0),
     "HF": (1.0, 0.0),
-    "LF_HFratio": (1.3217202335879497, 0.0),
+    "LF_HFratio": (1.0, 0.0),
 }
 
 
@@ -554,7 +554,7 @@ def _window_hrv(
     `time_domain_input`: 'raw' (current — un-repaired RR for time-domain to
     preserve genuine ectopy) or 'repaired' (structurally-repaired RR).
 
-    `freq_method`: 'hybrid' (current — Lomb-Scargle for LF/HF, PCHIP-FFT for
+    `freq_method`: 'hybrid' (current — Lomb-Scargle for LF/HF, Welch for
     LF/HF ratio) or 'pchip' (PCHIP-FFT for all three freq fields, no Lomb).
     """
     if rr_ms.size == 0:
@@ -571,7 +571,13 @@ def _window_hrv(
         lf, hf, ratio = _freq_domain_pchip_fft(rr_fd, rr_time_fd, detrend=detrend)
     else:
         lf, hf = _freq_domain_lomb(rr_fd, rr_time_fd, detrend=detrend)
-        _, _, ratio = _freq_domain_pchip_fft(rr_fd, rr_time_fd, detrend=detrend)
+        _, _, ratio = lf_hf_welch(
+            rr_time_fd,
+            rr_fd,
+            np.ones(rr_fd.size, dtype=bool),
+        )
+        if not np.isfinite(ratio):
+            _, _, ratio = _freq_domain_pchip_fft(rr_fd, rr_time_fd, detrend=detrend)
     return (avg, sd, rmssd, pnn50, lf, hf, ratio)
 
 
