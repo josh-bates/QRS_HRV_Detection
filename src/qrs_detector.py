@@ -835,16 +835,56 @@ def detect_qrs_causal(ecg, fs=FS, chunk_minutes=15):
     # Post-detection refinement on the polarity-corrected signal
     qrs = _post_detection_refinement(qrs, ecg_corr, fs)
 
-    # R-peak refinement: snap each detection to the true R-peak (positive
-    # maximum in polarity-corrected signal) within ±80 ms. Wider than the
-    # original ±60 ms to handle below-normal-amplitude windows where the
-    # causal bandpass group delay produces timing errors up to ~70 ms.
+    # R-peak refinement: snap each detection to the true R-peak within ±60 ms.
+    #
+    # When the recording-start polarity correction did NOT flip the signal
+    # (flipped=False), a per-window dominant-sign analysis is used. This
+    # handles mid-recording ECG axis rotations where R-peaks flip sign
+    # partway through (e.g. recording 17 after minute 363): windows where
+    # candidates are predominantly negative snap to the minimum rather than
+    # the maximum, finding the true R-peak instead of a spurious positive
+    # feature within the search window.
+    #
+    # When the signal was globally flipped at start (flipped=True), the
+    # original argmax is preserved unchanged. In that case the candidates
+    # already track the features that best match expert positions, and
+    # changing snap direction would misplace them.
     search_r = int(round(0.060 * fs))
-    refined = np.empty(len(qrs), dtype=int)
-    for i, q in enumerate(qrs):
-        lo = max(0, q - search_r)
-        hi = min(len(ecg_corr), q + search_r + 1)
-        refined[i] = lo + int(np.argmax(ecg_corr[lo:hi]))
+    refined   = np.empty(len(qrs), dtype=int)
+
+    if not flipped:
+        snap_win = int(60 * fs)
+        n_snap_w = int(np.ceil(len(ecg_corr) / snap_win))
+        window_polarity = np.ones(n_snap_w, dtype=int)
+        for sw in range(n_snap_w):
+            lo_w  = sw * snap_win
+            hi_w  = min((sw + 1) * snap_win, len(ecg_corr))
+            q_win = qrs[(qrs >= lo_w) & (qrs < hi_w)]
+            if q_win.size < 5:
+                continue
+            valid = q_win[(q_win >= 0) & (q_win < len(ecg_corr))]
+            if valid.size < 5:
+                continue
+            pos_frac = float(np.mean(ecg_corr[valid] > 0))
+            if pos_frac < 0.5:
+                window_polarity[sw] = -1
+
+        for i, q in enumerate(qrs):
+            lo  = max(0, q - search_r)
+            hi  = min(len(ecg_corr), q + search_r + 1)
+            seg = ecg_corr[lo:hi]
+            if len(seg) == 0:
+                refined[i] = q
+                continue
+            sw  = min(n_snap_w - 1, int(q) // snap_win)
+            pol = int(window_polarity[sw])
+            refined[i] = lo + int(np.argmax(pol * seg))
+    else:
+        for i, q in enumerate(qrs):
+            lo = max(0, q - search_r)
+            hi = min(len(ecg_corr), q + search_r + 1)
+            refined[i] = lo + int(np.argmax(ecg_corr[lo:hi]))
+
     qrs = np.unique(refined)
 
     # Hard refractory after R-peak snapping: two detections originally 360 ms
