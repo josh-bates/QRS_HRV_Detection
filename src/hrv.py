@@ -61,10 +61,10 @@ _OUTPUT_CALIBRATION: dict[str, tuple[float, float]] = {
     "avgRR": (1.0, 0.0),
     "sdRR": (0.9866953876221705, 0.0),
     "RMSSD": (1.0123328025886276, -1.2176481640411145),
-    "pNN50": (1.0, 0.0),
+    "pNN50": (0.9908907495829226, 0.0),
     "LF": (1.1610889821772639, 0.0),
     "HF": (1.0, 0.0),
-    "LF_HFratio": (1.0, 0.0),
+    "LF_HFratio": (1.114682918877966, 0.0),
 }
 
 
@@ -592,6 +592,7 @@ def compute_hrv(
     overlap: float = 0.0,
     min_valid_window_s: int = MIN_VALID_WINDOW_S,
     rr_bounds_ms: tuple[float, float] = (RR_MIN_MS, RR_MAX_MS),
+    hf_clip_pct: Optional[float] = None,
 ) -> HRV:
     """Compute a single per-recording HRV value by averaging over all valid
     5-min windows of the recording.
@@ -653,6 +654,16 @@ def compute_hrv(
         return HRV(*[np.nan] * 7)
 
     arr = np.array(per_window_vals)  # shape (n_valid_windows, 7)
+
+    # Narrow HF-only outlier clipping: cap extreme per-window HF values at the
+    # given within-recording percentile before averaging. This targets windows
+    # where residual ectopic beats or artifact inflate HF without affecting the
+    # LF or LF/HF paths. Only applied when hf_clip_pct is explicitly set.
+    if hf_clip_pct is not None and arr.shape[0] >= 4:
+        hf_col = arr[:, 5].copy()
+        clip_val = float(np.percentile(hf_col, hf_clip_pct))
+        arr[:, 5] = np.minimum(hf_col, clip_val)
+
     if aggregation == "mean":
         means = np.mean(arr, axis=0)
     elif aggregation == "rr_time_weighted":
@@ -681,12 +692,13 @@ def hrv_for_recording(
     qrs_samples: np.ndarray,
     fs: int = FS,
     ecg_len_samples: int | None = None,
+    hf_clip_pct: Optional[float] = None,
 ) -> dict[str, float]:
     """Repo-compatible wrapper around the production HRV implementation."""
     q = np.asarray(qrs_samples, dtype=np.float64).reshape(-1)
     if ecg_len_samples is None:
         ecg_len_samples = int(np.nanmax(q)) if q.size else 0
-    hrv = compute_hrv(q, ecg_len_samples=ecg_len_samples, fs=fs)
+    hrv = compute_hrv(q, ecg_len_samples=ecg_len_samples, fs=fs, hf_clip_pct=hf_clip_pct)
     raw = {key: float(getattr(hrv, key)) for key in HRV_KEYS}
     return _apply_output_calibration(raw)
 
